@@ -2,7 +2,7 @@
 <html data-bind="app">
 <head>
     <title>TO DO</title>
-    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
     <script type="text/javascript" src="lib/jquery-1.9.1.js"></script>
     <script type="text/javascript" src="lib/lodash.min.js"></script>
     <script type="text/javascript" src="bin/frontbone.js"></script>
@@ -80,6 +80,20 @@ add: добавить новую модель в заданную коллекц
         }
     }">
         <input type="text" name="name" autocomplete="off"/>
+        <input type="submit" value="Add one"/>
+    </form>
+
+    <h2>Add at specific index</h2>
+    <form data-bind="form: {
+        model: Task,
+        submit: {
+            add: todos | parseInt(specIndex)
+        }
+    }">
+        <label>name:</label> <br/>
+        <input type="text" name="name" autocomplete="off"/>  <br/>
+        <label>index:</label> <br/>
+        <input type="text" data-bind="observer, value: specIndex"/> <br/>
         <input type="submit" value="Add one"/>
     </form>
 </div>
