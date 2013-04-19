@@ -23,10 +23,20 @@
         },
         refresher = window.ComputedRefresher = {
             refreshAll: function () {
-                _.each(waitForRefresh, function (val) {
-                    val.notify();
+
+                _.each(waitForRefresh, function (observable) {
+                    var last = observable.get();
+                    var interval = setInterval(function () {
+                        var newVal = observable._value;
+                        if (newVal === last) {
+                            clearInterval(interval);
+                            newVal = undefined;
+                            observable.notify();
+                        }
+                        last = newVal;
+                    }, 25);
+
                 });
-                waitForRefresh = [];
             },
             startRefresh: function () {
                 var self = this;
@@ -42,8 +52,87 @@
                 refreshActive = false;
             }
         }, BaseObservable;
+    $(function () {
+        var refresh = _.throttle(function () {
+            _.defer(function () {
+                refresher.refreshAll();
+            });
 
-    refresher.startRefresh();
+        }, 50);
+        $('html').on('mousemove mousedown mouseup keydown', refresh);
+        $(window).resize(refresh);
+    });
+    //refresher.startRefresh();
+
+    var ObjectObservable = window.ObjectObservable = function (params) {
+        this._listeners = [];
+        if (params.get) {
+            this.get = params.get;
+            this._value = this._lastValue = this.get();
+        } else {
+            this._value = this._lastValue = params.initial;
+        }
+        addToRefresh(this);
+        if (params.set) {
+            this.set = params.set;
+        }
+
+    };
+
+    ObjectObservable.prototype = {
+        set: function (value) {
+            this._value = value;
+            return this;
+        },
+        get: function () {
+            return this._value;
+        },
+        subscribe: function (callback) {
+            this._listeners.push(callback);
+            return this;
+        },
+        unsubscribe: function (callback) {
+            this._listeners = _.filter(this._listeners, function (listener) {
+                return listener === callback;
+            });
+            return this;
+        },
+        notify: function () {
+            var me = this,
+                value = me.get();
+
+            if (me._lastValue !== value || _.isObject(value)) {
+                _.each(this._listeners, function (callback) {
+                    callback.call(me, value);
+                });
+            }
+            me._lastValue = value;
+            return me;
+        },
+        fire: function () {
+            var me = this,
+                value = me.get();
+            _.each(this._listeners, function (callback) {
+                callback.call(me, value);
+            });
+            return me;
+        },
+        callAndSubscribe: function (callback) {
+            callback.call(this, this.get());
+            this.subscribe(callback);
+            return this;
+        },
+        dependsOn: function (obs) {
+            var me = this;
+            obs.subscribe(function () {
+                me._value = me.get();
+                me.notify();
+            });
+            return me;
+        },
+        _notSimple: true,
+        __observable: true
+    };
 
     BaseObservable = function (params) {
         params = params || {};
@@ -51,7 +140,7 @@
             getter = params.get,
             setter = params.set,
             ctx = params.context,
-            async = params.async,
+        //async = params.async,
             dependencies = [],
             listeners = [],
             fn = function (newValue) {
@@ -70,11 +159,7 @@
                         } else {
                             value = newValue;
                         }
-                        if (!async) {
-                            fn.notify();
-                        } else {
-                            addToRefresh(fn);
-                        }
+                        fn.notify();
                     }
                 }
                 return value;
@@ -85,11 +170,7 @@
                 if (dependencies.indexOf(obs) === -1) {
                     dependencies.push(obs);
                     obs.subscribe(function () {
-                        if (!async) {
-                            fn.notify();
-                        } else {
-                            addToRefresh(fn);
-                        }
+                        fn.notify();
                     });
                 }
                 return me;
@@ -139,6 +220,9 @@
             computedInit = fn;
             value = getter.call(ctx);
             computedInit = false;
+            if (!dependencies.length) {
+                addToRefresh(fn);
+            }
         }
         fn.lastValue = value;
         delete fn.dependsOn;
@@ -616,6 +700,8 @@
         Collection = Model.extend({
 
             constructor: function (models, attributes) {
+                this.attributes={};
+                this._changed={};
                 this.itself = new itself(this);
                 this.models = [];
                 this.length = 0;
@@ -680,22 +766,24 @@
             },
             add: function (models, index, silent) {
 
-				var me = this,
-					hashIndex,
-					addedModels = [],
-					_models,
-					_index = 0;
+                var me = this,
+                    hashIndex,
+                    addedModels = [],
+                    _models,
+                    _index = 0;
 
                 if (!(models instanceof Array)) {
                     models = [models];
                 }
 
-				if (typeof index !== 'number') {
-					index = this.getIndex(this.models[this.length-1]);
-				} else if (index === 0) {
-					_models = _.clone(models).reverse();
-					_index = this.getIndex(this.models[0]) - _models.length - 1;
-				}
+                if (typeof index !== 'number') {
+                    index = this.length;
+                    _index = this.getIndex(this.models[this.length - 1]);
+                } else if (index === 0) {
+                    _models = _.clone(models).reverse();
+                    _index = this.getIndex(this.models[0]) - _models.length - 1;
+                }
+
 
                 function addHashIndex(model, index) {
                     if (index === 0 && me.length) {
@@ -747,12 +835,12 @@
 
                 this.length = this.models.length;
                 if (!silent) {
-					this.fire('add', addedModels, index, _index);
+                    this.fire('add', addedModels, index, _index);
                 }
                 return this;
             },
             cut: function (id) {
-                var found, me=this;
+                var found, me = this;
                 this.each(function (model, index) {
                     if (model.id === id) {
                         found = me.cutAt(index);
@@ -828,7 +916,9 @@
              * @return {Number}
              */
             getIndex: function (model) {
-				if(!model) return 0;
+                if (!model) {
+                    return 0;
+                }
                 var i = this.indexOf(model);
                 return this._hashId[i].index;
             }
@@ -873,9 +963,6 @@
                 return left.index < right.index ? -1 : 1;
             }), 'value');
     };
-
-
-
 
 
     // Mix in each Underscore method as a proxy to `Collection#models`.
@@ -1070,10 +1157,8 @@
         };
     ViewModel = Events.extend(ViewModel);
 
-    ViewModel.compAsync = true;
-
-    ViewModel.findObservable = function (context, string, addArgs) {
-
+    //ViewModel.compAsync = true;
+    var getEvalFunction = function (context, string, addArgs) {
         addArgs = addArgs || {};
         if (typeof string !== 'string') {
             throw  new TypeError('String expected');
@@ -1081,53 +1166,75 @@
         if (Observable.isObservable(context)) {
             context = context();
         }
-        var keys = [],
+
+        var keys = ['______context__________'],
             vals = [],
             fn,
-            comp,
-            fnEval,
-            obs;
+            fnEval;
+
         _.each(addArgs, function (val, key) {
             keys.push(key);
             vals.push(val);
         });
 
-        keys.push('with(this) return ' + string);
+        if (context) {
+            keys.push('with(______context__________) return ' + string);
+        }
+        else {
+            keys.push('return ' + string);
+        }
         fn = Function.apply(context, keys);
+        vals.unshift(context);
         fnEval = function () {
             try {
-                return fn.apply(context, vals);
+                switch (vals.length) {
+                    case 1:
+                        return fn(context);
+                    case 2:
+                        return fn(context, vals[1]);
+                    case 3:
+                        return fn(context, vals[1], vals[2]);
+                    case 4:
+                        return fn(context, vals[1], vals[2], vals[3]);
+                    case 5:
+                        return fn(context, vals[1], vals[2], vals[3], vals[4]);
+                    case 6:
+                        return fn(context, vals[1], vals[2], vals[3], vals[4], vals[5]);
+                    default:
+                        return fn.apply(undefined, vals);
+                }
+
             } catch (exception) {
                 console.log('Error "' + exception.message + '" in expression "' + string + '" Context: ', context);
             }
         };
+        return fnEval;
+    };
 
-        obs = fnEval();
-        //если уже асинхронный, то возвращаем его
-        if (this.compAsync) {
-            if (!Observable.isObservable(obs)) {
-                obs = fnEval;
-            }
-            comp = BaseObservable({
-                async: true,
+    ViewModel.findObservable = function (context, string, addArgs) {
+
+        var fnEval = getEvalFunction(context, string, addArgs);
+        var obs = fnEval();
+
+        if (Observable.isObservable(obs)) {
+            return obs;
+        }
+
+        if (context[string]) {
+            return new ObjectObservable({
                 get: function () {
-                    return  obs();
+                    return context[string];
                 },
-                set: function (val) {
-                    obs(val);
+                set: function (value) {
+                    context[string] = value;
                 }
             });
-        } else {
-
-            if (Observable.isObservable(obs)) {
-                comp = obs;
-            } else {
-                comp = Computed(function () {
-                    return fnEval();
-                }, context);
-            }
         }
-        return comp;
+        return new ObjectObservable({
+            get: function () {
+                return fnEval();
+            }
+        });
     };
 
     ViewModel.findBinds = function (element, context, addArgs) {
@@ -1182,37 +1289,47 @@
             });
         }
     };
+    var anotherBreakersRegEx = /\{[\s\S]*\}/;
+    var firstColonRegex2 = /^\s*([^:]+)\s*:\s*([\s\S]*\S)\s*,/;
+    var parsePairs = function (string) {
+        var result = {};
+        _.each(string.split(commaSplitter), function (value) {
+            var matches = firstColonRegex.exec(value);
+            if (matches) {
+                result[matches[1]] = matches[2];
+            }
+        });
+        return result;
+    }
 
     ViewModel.parseOptionsObject = function (value) {
-        var match, attrs, res;
-        if (!value) {
-            return {};
-        }
+        var parsedSimpleObjects = {};
+        var i = 0;
+        var recursiveParse = function (string) {
+            if (string.match(/\{[^{}]*\}/)) {
+                recursiveParse(string.replace(/\{[^{}]*\}/, function (string) {
 
-        match = value.match(breakersRegex);
-        if (!match || match[1] === undefined) {
-            throw new Error('Expression: "' + value + '" is not valid object');
-        }
-
-        attrs = match[1].split(commaSplitter);
-        if (!attrs.length) {
-            return {};
-        }
-
-        res = {};
-        _.each(attrs, function (val) {
-
-            if (!val) {
-                return;
+                    var name = Math.random() + i++;
+                    parsedSimpleObjects[name] = parsePairs(string.slice(1, -1));
+                    return name;
+                }));
             }
-            match = val.match(firstColonRegex);
+        };
+        recursiveParse(value);
 
-            if (!match || !match[1] || !match[2]) {
-                throw new Error('Expression: "' + value + '" is not valid object');
-            }
-            res[match[1]] = match[2];
+        _.each(parsedSimpleObjects, function (object) {
+            _.each(object, function (value, key) {
+                if (parsedSimpleObjects[value]) {
+                    object[key] = parsedSimpleObjects[value];
+                    delete parsedSimpleObjects[value];
+                }
+            });
         });
-        return res;
+        var result;
+        _.each(parsedSimpleObjects, function (value) {
+            result = value;
+        });
+        return result;
     };
 
     window.ViewModel = ViewModel;
@@ -1283,14 +1400,30 @@
             return false;
         },
         value: function (elem, value, context, addArgs) {
-            var $el = $(elem),
-                obs = this.findObservable(context, value, addArgs)
-                    .callAndSubscribe(function (value) {
-                        $el.val(value);
-                    });
-            $el.change(function () {
-                obs($el.val());
-            });
+
+            var $el = $(elem), valueObs, inputObs;
+
+            inputObs = (new ObjectObservable({
+                get: function () {
+                    return $el.val();
+                },
+                set: function (val) {
+                    if (val != $el.val()) {
+                        $el.val(val);
+                    }
+                }
+            })).subscribe(function (value) {
+                    valueObs.set(value);
+                });
+
+            valueObs = this.findObservable(context, value, addArgs)
+                .callAndSubscribe(function (value) {
+                    if (value != inputObs.get()) {
+                        inputObs.set(value);
+                    }
+                });
+
+
         },
         attr: function (elem, value, context, addArgs) {
             _.each(this.parseOptionsObject(value), function (condition, attrName) {
@@ -1343,6 +1476,29 @@
                 $el = $(elem);
             $el.click(function () {
                 fn.apply(context, arguments);
+            });
+        },
+        className: function (elem, value, context, addArgs) {
+            var oldClassName,
+                $el = $(elem);
+            this.findObservable(context, value, addArgs).callAndSubscribe(function (className) {
+                if (oldClassName) {
+                    $el.removeClass(oldClassName);
+                }
+                if (className) {
+                    $el.addClass(className);
+                }
+                oldClassName = className;
+            });
+        },
+        events: function (elem, value, context, addArgs) {
+            var self = this,
+                $el = $(elem);
+            _.each(this.parseOptionsObject(value), function (expr, eventName) {
+                var callback = self.findObservable(context, expr, addArgs)();
+                $el.bind(eventName, function (e) {
+                    callback.call(context, e);
+                });
             });
         }
     };
@@ -1576,10 +1732,11 @@
 
             //склеивает все представления всех моделей в коллекции
             onReset = function () {
-                var i = 0,
+                var i = collection.getIndex(collection.at(0))-1,
                     html = '';
                 $el.empty();
 
+                if(i < 0) i = 0;
 
                 if (options.innerBinds) {
                     collection.each(function (model) {
