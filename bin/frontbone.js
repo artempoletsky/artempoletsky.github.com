@@ -680,22 +680,22 @@
             },
             add: function (models, index, silent) {
 
-				var me = this,
-					hashIndex,
-					addedModels = [],
-					_models,
-					_index = 0;
+                var me = this,
+                    hashIndex,
+                    addedModels = [],
+                    _models,
+                    _index = 0;
 
                 if (!(models instanceof Array)) {
                     models = [models];
                 }
 
-				if (typeof index !== 'number') {
-					index = this.getIndex(this.models[this.length-1]);
-				} else if (index === 0) {
-					_models = _.clone(models).reverse();
-					_index = this.getIndex(this.models[0]) - _models.length - 1;
-				}
+                if (typeof index !== 'number') {
+                    index = this.getIndex(this.models[this.length - 1]);
+                } else if (index === 0) {
+                    _models = _.clone(models).reverse();
+                    _index = this.getIndex(this.models[0]) - _models.length - 1;
+                }
 
                 function addHashIndex(model, index) {
                     if (index === 0 && me.length) {
@@ -747,12 +747,12 @@
 
                 this.length = this.models.length;
                 if (!silent) {
-					this.fire('add', addedModels, index, _index);
+                    this.fire('add', addedModels, index, _index);
                 }
                 return this;
             },
             cut: function (id) {
-                var found, me=this;
+                var found, me = this;
                 this.each(function (model, index) {
                     if (model.id === id) {
                         found = me.cutAt(index);
@@ -828,7 +828,7 @@
              * @return {Number}
              */
             getIndex: function (model) {
-				if(!model) return 0;
+                if (!model) return 0;
                 var i = this.indexOf(model);
                 return this._hashId[i].index;
             }
@@ -873,9 +873,6 @@
                 return left.index < right.index ? -1 : 1;
             }), 'value');
     };
-
-
-
 
 
     // Mix in each Underscore method as a proxy to `Collection#models`.
@@ -1229,7 +1226,7 @@
         src: function (elem, value, context, addArgs) {
             this.findObservable(context, value, addArgs)
                 .callAndSubscribe(function (val) {
-                    elem.src = val || '';
+                    elem.src = val||'';
                 });
         },
         html: function (elem, value, context, addArgs) {
@@ -1265,16 +1262,22 @@
             else {
                 addArgs = {};
             }
+            var elName = elem.tagName.toLowerCase();
             fArray.callAndSubscribe(function (array) {
                 $el.empty();
+
                 if (array) {
                     _.each(array, function (val, ind) {
                         addArgs.$index = ind;
                         addArgs.$parent = array;
                         addArgs.$value = val;
-                        var tempDiv = document.createElement('div');
+                        var tempDiv = document.createElement(elName);
                         tempDiv.innerHTML = html;
+                        var old = ViewModel.compAsync;
+                        ViewModel.compAsync = false;
                         ViewModel.findBinds(tempDiv, val, addArgs);
+                        ViewModel.compAsync = old;
+
                         $el.append(tempDiv.innerHTML);
                     });
                 }
@@ -1296,6 +1299,7 @@
             _.each(this.parseOptionsObject(value), function (condition, attrName) {
                 ViewModel.findObservable(context, condition, addArgs)
                     .callAndSubscribe(function (val) {
+
                         if (val !== false && val !== undefined && val != null) {
                             elem.setAttribute(attrName, val);
                         } else {
@@ -1353,6 +1357,20 @@
     /*globals _, ViewModel, $*/
     var rawTemplates = {},
         compiledTemplates = {};
+    var defConstructor = function (rawTemplate, tagName) {
+
+        return function (context, addArgs) {
+            var old = ViewModel.compAsync;
+            ViewModel.compAsync = false;
+            var elem = document.createElement(tagName);
+            elem.innerHTML = rawTemplate;
+            var ctx = Observable(context);
+            var args = Observable(addArgs);
+            ViewModel.findBinds(elem, context, addArgs);
+            ViewModel.compAsync = old;
+            return elem.innerHTML;
+        }
+    }
     /**
      * Объект для работы с темплейтами
      * @type {{Object}}
@@ -1373,7 +1391,7 @@
          * @param {function} constructorFunction
          * @returns {function}
          */
-        get: function (rawTemplateName, constructorFunction) {
+        get: function (rawTemplateName, constructorFunction, context, addArgs) {
             var template = compiledTemplates[rawTemplateName],
                 rawTemplate;
             if (!template) {
@@ -1381,7 +1399,13 @@
                 if (!rawTemplate) {
                     throw  new Error('Raw tempalte: "' + rawTemplateName + '" is not defined');
                 }
-                compiledTemplates[rawTemplateName] = template = constructorFunction(rawTemplate);
+                if (typeof constructorFunction != 'function') {
+                    compiledTemplates[rawTemplateName] = template = defConstructor(rawTemplate, constructorFunction);
+                }
+                else {
+                    compiledTemplates[rawTemplateName] = template = constructorFunction(rawTemplate);
+                }
+
             }
             return template;
         }

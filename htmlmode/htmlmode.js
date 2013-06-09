@@ -52,18 +52,23 @@
     };
 
     ViewModel.binds.model = function (elem, value, context, addArgs) {
+        var $el = $(elem);
         context[value] = Model.extend({
             defaults: JSON.parse($(elem).html())
         });
+        $el.remove();
         return false;
     };
 
 
     ViewModel.binds.collection = function (elem, value, context, addArgs) {
         var args = value.split(/\s*,\s*/);
+        var $el = $(elem);
         context[args[0]] = Collection.create({
             model: this.findObservable(context, args[1], addArgs)()
-        }, JSON.parse($(elem).html()));
+        }, JSON.parse($el.html()));
+        $el.remove();
+        return false;
     };
 
     ViewModel.binds.form = function (form, value, context, addArgs) {
@@ -101,5 +106,20 @@
         }
     };
 
+
+    ViewModel.binds.data = function (elem, value, context, addArgs) {
+        var me = this, $el = $(elem);
+        _.each(this.parseOptionsObject(value), function (value, dataName) {
+            me.findObservable(context, value, addArgs).callAndSubscribe(function (value) {
+                $el.data(dataName, value);
+            });
+        });
+    };
+
+    ViewModel.binds.href = function (a, value, context, addArgs) {
+        ViewModel.findObservable(context, value, addArgs).callAndSubscribe(function (value) {
+            a.href = value;
+        });
+    };
 }());
 
