@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title></title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+    <script type="text/javascript" src="lib/jquery-1.9.1.js"></script>
+    <script type="text/javascript" src="lib/lodash.min.js"></script>
+    <script type="text/javascript" src="bin/frontbone.js"></script>
+    <script type="text/javascript">
+        $(function () {
+            window.wm=ViewModel.create({
+                el: 'body',
+                autoParseBinds: true,
+                value: 'asdasd'
+            });
+        });
+    </script>
+</head>
+<body>
+<input data-bind="value: value"/>
+<div data-bind="html: value"></div>
+</body>
+</html>
