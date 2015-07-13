@@ -1,3 +1,6 @@
 [submodule "dungeon"]
 	path = dungeon
 	url = https://github.com/artempoletsky/dungeon.git
+[submodule "sprite_morph"]
+	path = sprite_morph
+	url = ../sprite_morph.git
