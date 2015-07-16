@@ -4,3 +4,6 @@
 [submodule "sprite_morph"]
 	path = sprite_morph
 	url = ../sprite_morph.git
+[submodule "hex"]
+	path = hex
+	url = ../hex.git
