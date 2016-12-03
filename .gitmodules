@@ -7,3 +7,6 @@
 [submodule "hex"]
 	path = hex
 	url = ../hex.git
+[submodule "solar2"]
+	path = solar2
+	url = ../solar2.git
